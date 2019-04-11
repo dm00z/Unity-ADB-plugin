@@ -6,6 +6,7 @@ using UnityEngine;
 using UnityEditor;
 using System.Text.RegularExpressions;
 
+[Flags]
 enum LogLevel
 {
     INFO = 1,
@@ -50,7 +51,9 @@ class CollapseLogPair
 public class UnityADBHelper : EditorWindow
 {
     #region ADB command
-    private string ADB_EXECUTABLE = "{0}/platform-tools/adb.exe";
+    private string ADB_WINDOWS_EXE = "{0}/platform-tools/adb.exe";
+    private string ADB_OSX_EXE = "{0}/platform-tools/adb";
+    private string ADB_EXECUTABLE;
 
     private const string ADB_DEVICE_CHECK = "devices";
 
@@ -131,13 +134,18 @@ public class UnityADBHelper : EditorWindow
         adbCollapseLogs = new List<CollapseLogPair>();
         adbFilteredCollapseLog = new List<CollapseLogPair>();
         parseLogData = new ADBLogParse();
-        EditorApplication.playmodeStateChanged = HandleOnPlayModeChanged;
+        //EditorApplication.playmodeStateChanged = HandleOnPlayModeChanged;
+        EditorApplication.playModeStateChanged += HandleOnPlayModeChanged;
 
         infoLogLevel = Resources.Load("info") as Texture;
         errorLogLevel = Resources.Load("error") as Texture;
         warningLogLevel = Resources.Load("warning") as Texture;
 
-        ADB_EXECUTABLE = string.Format(ADB_EXECUTABLE, EditorPrefs.GetString("AndroidSdkRoot"));
+#if UNITY_EDITOR_OSX
+        ADB_EXECUTABLE = string.Format(ADB_OSX_EXE, EditorPrefs.GetString("AndroidSdkRoot"));
+#else
+        ADB_EXECUTABLE = string.Format(ADB_WINDOWS_EXE, EditorPrefs.GetString("AndroidSdkRoot"));
+#endif
         openEditorPath = EditorPrefs.GetString("kScriptsDefaultApp");
     }
 
@@ -153,6 +161,8 @@ public class UnityADBHelper : EditorWindow
 
     void DestroyProcess()
     {
+        EditorApplication.playModeStateChanged -= HandleOnPlayModeChanged;
+
         if (adbProcessBackground.ThreadState == System.Threading.ThreadState.Running)
             adbProcessBackground.Abort();
 
@@ -181,8 +191,8 @@ public class UnityADBHelper : EditorWindow
         if (GUILayout.Button("Disconnect"))
             RunCommand(REMOTE_ADB_DISCONNECT);
         GUILayout.FlexibleSpace();
-        if (GUILayout.Button("Raw log"))
-            ; // open other window
+        if (GUILayout.Button("Raw log")) { }
+        // open other window
         EditorGUILayout.EndHorizontal();
         
         // indicator
@@ -234,7 +244,7 @@ public class UnityADBHelper : EditorWindow
         EditorGUILayout.EndHorizontal();
 
         // repaint <> layout event 
-        if (Event.current.type == EventType.layout)
+        if (Event.current.type == EventType.Layout)
             FilteredLog();
 
         adbLogRects.Clear();
@@ -320,7 +330,7 @@ public class UnityADBHelper : EditorWindow
         EditorGUI.DrawRect(new Rect(0, upperMargin, position.width, 5), new Color(0.9f, 0.9f, 0.9f));
         EditorGUIUtility.AddCursorRect(new Rect(0, upperMargin, position.width, 10), MouseCursor.SplitResizeUpDown);
 
-        if (Event.current.type == EventType.mouseDown)
+        if (Event.current.type == EventType.MouseDown)
         {
             // click item
             int clickedIdx = Mathf.FloorToInt((Event.current.mousePosition.y - (upperMargin - splitterCurrentPos - scrollPos.y)) / 44);
@@ -390,7 +400,7 @@ public class UnityADBHelper : EditorWindow
 
     private void ResizeSplitter(Rect splitterRect)
     {
-        if (Event.current.type == EventType.mouseDown && splitterRect.Contains(Event.current.mousePosition))
+        if (Event.current.type == EventType.MouseDown && splitterRect.Contains(Event.current.mousePosition))
         {
             splitterResizeFlag = true;
             prevMousePosition = Event.current.mousePosition;
@@ -405,7 +415,7 @@ public class UnityADBHelper : EditorWindow
             Repaint();
         }
 
-        if (Event.current.type == EventType.mouseUp)
+        if (Event.current.type == EventType.MouseUp)
             splitterResizeFlag = false;
     }
 
@@ -483,7 +493,8 @@ public class UnityADBHelper : EditorWindow
         parseLog.RemoveAll(item => item == string.Empty);
         if (parseLog.Count > 5)
         {
-            string message = e.Data.Substring(e.Data.IndexOf("Unity") + 10).Trim();
+            // stringcomparison
+            string message = e.Data.Substring(e.Data.IndexOf("Unity", StringComparison.CurrentCulture) + 10).Trim();
             if (startLogData)
             {
                 startLogData = false;
@@ -564,7 +575,7 @@ public class UnityADBHelper : EditorWindow
         }
     }
 
-    private void HandleOnPlayModeChanged()
+    private void HandleOnPlayModeChanged(PlayModeStateChange state)
     {
         if (EditorApplication.isPlaying && clearOnPlay)
         {
